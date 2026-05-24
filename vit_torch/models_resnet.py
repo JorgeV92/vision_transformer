@@ -1,4 +1,3 @@
-# models_resnet_torch.py
 
 from __future__ import annotations
 
@@ -16,20 +15,6 @@ def to_2tuple(x: int | Sequence[int]) -> Tuple[int, int]:
 
 
 class StdConv2d(nn.Conv2d):
-    """
-    Conv2d with weight standardization.
-
-    Flax kernel shape:
-        [H, W, in_channels, out_channels]
-
-    PyTorch kernel shape:
-        [out_channels, in_channels, H, W]
-
-    So in PyTorch we standardize over:
-        in_channels, H, W
-    for each output channel.
-    """
-
     def __init__(self, *args, eps: float = 1e-5, **kwargs):
         super().__init__(*args, **kwargs)
         self.eps = eps
@@ -57,10 +42,6 @@ class StdConv2d(nn.Conv2d):
 
 
 def group_norm(num_channels: int, num_groups: int = 32) -> nn.GroupNorm:
-    """
-    Flax GroupNorm defaults to 32 groups.
-    PyTorch requires num_channels to be divisible by num_groups.
-    """
     while num_channels % num_groups != 0:
         num_groups //= 2
 
@@ -68,22 +49,6 @@ def group_norm(num_channels: int, num_groups: int = 32) -> nn.GroupNorm:
 
 
 class ResidualUnit(nn.Module):
-    """
-    PyTorch version of the Flax ResidualUnit.
-
-    Original Flax block:
-        conv1: 1x1, features
-        gn1
-        relu
-        conv2: 3x3, features, stride
-        gn2
-        relu
-        conv3: 1x1, features * 4
-        gn3 with zero scale init
-        residual + y
-        relu
-    """
-
     expansion: int = 4
 
     def __init__(
@@ -139,9 +104,6 @@ class ResidualUnit(nn.Module):
         )
         self.gn3 = group_norm(out_channels)
 
-        # Flax code uses:
-        # nn.GroupNorm(name='gn3', scale_init=nn.initializers.zeros)
-        # In PyTorch, GroupNorm's affine weight is the scale gamma.
         nn.init.zeros_(self.gn3.weight)
         nn.init.zeros_(self.gn3.bias)
 
@@ -168,13 +130,6 @@ class ResidualUnit(nn.Module):
 
 
 class ResNetStage(nn.Module):
-    """
-    PyTorch version of ResNetStage.
-
-    The first block can downsample with first_stride.
-    The remaining blocks use stride 1.
-    """
-
     def __init__(
         self,
         in_channels: int,
