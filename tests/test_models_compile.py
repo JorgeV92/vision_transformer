@@ -5,6 +5,13 @@ import torch
 
 from vit_torch.models_mixer import MixerBlock, MlpBlock
 from vit_torch.models_resnet import ResidualUnit, ResNetStage, StdConv2d
+from vit_torch.models_vit import (
+    Encoder1DBlock,
+    Patches,
+    ResNetConfig,
+    TransformerConfig,
+    VisionTransformer,
+)
 
 
 def compiled_forward(model: torch.nn.Module, sample: torch.Tensor) -> torch.Tensor:
@@ -14,10 +21,10 @@ def compiled_forward(model: torch.nn.Module, sample: torch.Tensor) -> torch.Tens
 
     model.eval()
     backend = os.environ.get("TORCH_COMPILE_BACKEND", "eager")
-    compiled = compile_model(model, backend=backend)
 
     with torch.no_grad():
         eager_output = model(sample)
+        compiled = compile_model(model, backend=backend)
         compiled_output = compiled(sample)
 
     torch.testing.assert_close(compiled_output, eager_output)
@@ -77,3 +84,60 @@ def test_resnet_stage_compiles() -> None:
     output = compiled_forward(model, sample)
 
     assert output.shape == (2, 16, 8, 8)
+
+
+def test_vit_encoder_block_compiles() -> None:
+    model = Encoder1DBlock(
+        hidden_dim=8,
+        mlp_dim=16,
+        num_heads=2,
+        dropout_rate=0.0,
+        attention_dropout_rate=0.0,
+    )
+    sample = torch.randn(2, 5, 8)
+
+    output = compiled_forward(model, sample)
+
+    assert output.shape == (2, 5, 8)
+
+
+def test_vision_transformer_compiles() -> None:
+    model = VisionTransformer(
+        num_classes=5,
+        patches=Patches(size=(4, 4)),
+        transformer=TransformerConfig(
+            num_layers=1,
+            mlp_dim=16,
+            num_heads=2,
+            dropout_rate=0.0,
+            attention_dropout_rate=0.0,
+        ),
+        hidden_size=8,
+    )
+    sample = torch.randn(2, 3, 16, 16)
+
+    output = compiled_forward(model, sample)
+
+    assert output.shape == (2, 5)
+
+
+def test_hybrid_resnet_vision_transformer_compiles() -> None:
+    model = VisionTransformer(
+        num_classes=5,
+        patches={"size": (2, 2)},
+        transformer={
+            "num_layers": 1,
+            "mlp_dim": 16,
+            "num_heads": 2,
+            "dropout_rate": 0.0,
+            "attention_dropout_rate": 0.0,
+        },
+        hidden_size=8,
+        resnet=ResNetConfig(num_layers=(1,), width_factor=0.25),
+        classifier="gap",
+    )
+    sample = torch.randn(2, 3, 32, 32)
+
+    output = compiled_forward(model, sample)
+
+    assert output.shape == (2, 5)
